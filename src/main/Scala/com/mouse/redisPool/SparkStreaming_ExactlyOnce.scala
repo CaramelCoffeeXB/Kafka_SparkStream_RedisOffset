@@ -163,8 +163,8 @@ object SparkStreaming_ExactlyOnce {
       }
 
       return None
-
     }
+
     ssc.start()
     ssc.awaitTermination()
   }
