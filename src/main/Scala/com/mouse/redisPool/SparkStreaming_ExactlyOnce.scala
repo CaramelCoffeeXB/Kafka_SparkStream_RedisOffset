@@ -6,7 +6,7 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.kafka010.{ConsumerStrategies, HasOffsetRanges, KafkaUtils, LocationStrategies}
+import org.apache.spark.streaming.kafka010._
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import redis.clients.jedis.Pipeline
 
@@ -101,11 +101,20 @@ object SparkStreaming_ExactlyOnce {
     //开始处理批次消息
     stream.foreachRDD {
       rdd =>
-        val offsetRanges = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
 
-        val result = processLogs(rdd)
+        /**
+          * 获取 RDD 每一个分区里的offset;
+          * OffsetRange里面核心字段{
+            val topic: String,    主题
+            val partition: Int,   分区
+            val fromOffset: Long, 该拉去数据的开始偏移量
+            val untilOffset: Long 该分区拉去数据的最后偏移量
+            }
+
+          */
+        val offsetRanges: Array[OffsetRange] = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
+        val result: Array[MyRecord] = processLogs(rdd)
         println("=============== Total " + result.length + " events in this batch ..")
-
         val jedis = RedisClient.getPool.getResource
         val p1 : Pipeline = jedis.pipelined();
         p1.select(dbDefaultIndex)
@@ -132,7 +141,7 @@ object SparkStreaming_ExactlyOnce {
         offsetRanges.foreach { offsetRange =>
           println("partition : " + offsetRange.partition + " fromOffset:  " + offsetRange.fromOffset + " untilOffset: " + offsetRange.untilOffset)
           val topic_partition_key = offsetRange.topic + "_" + offsetRange.partition
-          p1.set(topic_partition_key, offsetRange.untilOffset + "")
+          p1.set(topic_partition_key, offsetRange.untilOffset.toString)
         }
 
         p1.exec();//提交事务
