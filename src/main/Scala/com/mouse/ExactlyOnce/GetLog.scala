@@ -5,6 +5,7 @@ import org.apache.spark.rdd.RDD
 
 /**
   * @author 咖啡不加糖
+  *
   */
 object GetLog {
   case class MyRecord(hour: String, user_id: String, site_id: String)
