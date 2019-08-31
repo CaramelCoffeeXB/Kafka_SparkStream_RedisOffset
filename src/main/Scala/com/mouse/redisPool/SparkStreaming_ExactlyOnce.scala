@@ -1,11 +1,10 @@
 package com.mouse.redisPool
 
-import com.mouse.ExactlyOnce.RedisClient
-import org.apache.kafka.clients.consumer.ConsumerRecord
+import com.mouse.ExactlyOnce.GetLog.MyRecord
+import com.mouse.ExactlyOnce.{GetLog, RedisClient}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.spark.SparkConf
-import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.kafka010._
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import redis.clients.jedis.Pipeline
@@ -41,7 +40,6 @@ object SparkStreaming_ExactlyOnce {
     val brokers = "kafka:9092"
     val topic = "save_redis_offset"
     val partition : Int = 0 //测试topic只有一个分区
-    val start_offset : Long = 0
 
     //Kafka参数
     val kafkaParams = Map[String, Object](
@@ -72,7 +70,7 @@ object SparkStreaming_ExactlyOnce {
     val jedis = RedisClient.getPool.getResource
     jedis.select(dbDefaultIndex)
     val topic_partition_key = topic + "_" + partition
-    var lastOffset = 0l
+    var lastOffset = 0L
     val lastSavedOffset = jedis.get(topic_partition_key)
 
     if(null != lastSavedOffset) {
@@ -113,7 +111,7 @@ object SparkStreaming_ExactlyOnce {
 
           */
         val offsetRanges: Array[OffsetRange] = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
-        val result: Array[MyRecord] = processLogs(rdd)
+        val result: Array[MyRecord] = GetLog.processLogs(rdd)
         println("=============== Total " + result.length + " events in this batch ..")
         val jedis = RedisClient.getPool.getResource
         val p1 : Pipeline = jedis.pipelined();
@@ -148,32 +146,7 @@ object SparkStreaming_ExactlyOnce {
         p1.sync();//关闭pipeline
 
         RedisClient.getPool.returnResource(jedis)
-
     }
-
-    case class MyRecord(hour: String, user_id: String, site_id: String)
-
-    def processLogs(messages: RDD[ConsumerRecord[String, String]]) : Array[MyRecord] = {
-      messages.map(_.value()).flatMap(parseLog).collect()
-    }
-
-    //解析每条日志，生成MyRecord
-    def parseLog(line: String): Option[MyRecord] = {
-      val ary : Array[String] = line.split("\\|~\\|", -1);
-      try {
-        val hour = ary(0).substring(0, 13).replace("T", "-")
-        val uri = ary(2).split("[=|&]",-1)
-        val user_id = uri(1)
-        val site_id = uri(3)
-        return Some(MyRecord(hour,user_id,site_id))
-
-      } catch {
-        case ex : Exception => println(ex.getMessage)
-      }
-
-      return None
-    }
-
     ssc.start()
     ssc.awaitTermination()
   }
